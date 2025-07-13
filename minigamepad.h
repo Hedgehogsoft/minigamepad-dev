@@ -337,6 +337,7 @@ typedef struct mg_gamepad_src {
 
 typedef struct mg_gamepad_src {
     IOHIDDeviceRef device;
+	void* events;
 } mg_gamepad_src;
 #elif defined(MG_WASM)
 typedef struct mg_gamepad_src {
@@ -390,7 +391,6 @@ typedef struct mg_gamepads_src {
 #elif defined(MG_MACOS)
 typedef struct mg_gamepads_src {
     IOHIDManagerRef hidManager;
-	void* events;
 } mg_gamepads_src;
 #elif defined(MG_WASM)
 typedef struct mg_gamepads_src {
