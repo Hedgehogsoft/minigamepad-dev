@@ -332,6 +332,7 @@ typedef struct mg_gamepad_src {
 } mg_gamepad_src;
 #elif defined(MG_MACOS)
 typedef struct mg_gamepad_src {
+	void* device;
 	void* events;
 } mg_gamepad_src;
 #elif defined(MG_WASM)
