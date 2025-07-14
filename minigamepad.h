@@ -309,34 +309,29 @@ typedef MG_ENUM(u8, mg_event_type) {
 };
 
 #ifdef MG_LINUX
-#include <linux/input.h>
-#include <linux/input-event-codes.h>
+struct mg_input_absinfo {
+	i32 value;
+	i32 minimum;
+	i32 maximum;
+	i32 fuzz;
+	i32 flat;
+	i32 resolution;
+};
 
 typedef struct mg_gamepad_src {
     int fd;
-    u8 keyMap[KEY_CNT - BTN_MISC];
-    u8 absMap[ABS_CNT];
-    struct input_absinfo absInfo[ABS_CNT];
+    u8 keyMap[512];
+    u8 absMap[64];
+    struct mg_input_absinfo absInfo[64];
     char full_path[256];
 } mg_gamepad_src;
 #elif defined(MG_WINDOWS)
-#define WIN32_LEAN_AND_MEAN
-#define OEMRESOURCE
-#include <windows.h>
-
-#include <xinput.h>
-#include <dinput.h>
-
 typedef struct mg_gamepad_src {
-    IDirectInputDevice8* device;
-    DIDEVCAPS caps;
-    DWORD xinput_index;
+    void* device;
+    u32 xinput_index;
 } mg_gamepad_src;
 #elif defined(MG_MACOS)
-#include <IOKit/hid/IOHIDManager.h>
-
 typedef struct mg_gamepad_src {
-    IOHIDDeviceRef device;
 	void* events;
 } mg_gamepad_src;
 #elif defined(MG_WASM)
@@ -376,17 +371,15 @@ typedef struct mg_gamepad {
 } mg_gamepad;
 
 #ifdef MG_LINUX
+#include <linux/input.h>
+#include <linux/input-event-codes.h>
+
 typedef struct mg_gamepads_src {
     int inotify, watch;
 } mg_gamepads_src;
 #elif defined(MG_WINDOWS)
-typedef HRESULT (WINAPI * PFN_DirectInput8Create)(HINSTANCE,DWORD,REFIID,LPVOID*,LPUNKNOWN);
-typedef void (*mg_proc)(void); /* function pointer equivalent of void* */
-
 typedef struct mg_gamepads_src {
-    HINSTANCE dinput_dll;
-    PFN_DirectInput8Create DInput8Create;
-    IDirectInput8* dinput;
+    void* dinput;
 } mg_gamepads_src;
 #elif defined(MG_MACOS)
 typedef struct mg_gamepads_src {
@@ -801,7 +794,7 @@ mg_gamepad* mg_linux_setup_gamepad(mg_gamepads* gamepads, const char* full_path)
         if (!isBitSet(i, absBits))
             continue;
 
-        if (ioctl(fd, EVIOCGABS(i), &gamepad->src.absInfo[i]) < 0)
+        if (ioctl(fd, EVIOCGABS(i), (struct input_absinfo*)&gamepad->src.absInfo[i]) < 0)
             continue;
 
         gamepad->src.absMap[i] = (u8)axisCount;
@@ -1069,7 +1062,7 @@ mg_bool mg_gamepad_update_platform(mg_gamepad* gamepad, mg_events* events) {
 			float deadzone, event_val;
 
 			mg_axis axis = mg_get_gamepad_axis(gamepad, gamepad->src.absMap[ev.code]);
-            const struct input_absinfo info = gamepad->src.absInfo[ev.code];
+            const struct mg_input_absinfo info = gamepad->src.absInfo[ev.code];
             float normalized = (float)ev.value;
             const float range = (float)(info.maximum - info.minimum);
 
@@ -1243,18 +1236,24 @@ mg_axis mg_get_gamepad_axis_platform(u32 axis) {
  */
 
 #if defined(MG_WINDOWS)
+#include <xinput.h>
+#include <dinput.h>
+
+typedef void (*mg_proc)(void); /* function pointer equivalent of void* */
 
 mg_gamepad* mg_xinput_list[XUSER_MAX_COUNT];
-typedef DWORD (WINAPI * PFN_XInputGetState)(DWORD,XINPUT_STATE*);
-typedef DWORD (WINAPI * PFN_XInputGetCapabilities)(DWORD,DWORD,XINPUT_CAPABILITIES*);
-typedef DWORD (WINAPI * PFN_XInputGetKeystroke)(DWORD, DWORD, PXINPUT_KEYSTROKE);
+typedef DWORD (* PFN_XInputGetState)(DWORD,XINPUT_STATE*);
+typedef DWORD (* PFN_XInputGetCapabilities)(DWORD,DWORD,XINPUT_CAPABILITIES*);
+typedef DWORD (* PFN_XInputGetKeystroke)(DWORD, DWORD, PXINPUT_KEYSTROKE);
+typedef HRESULT (WINAPI * PFN_DirectInput8Create)(HINSTANCE,DWORD,REFIID,LPVOID*,LPUNKNOWN);
 
-HINSTANCE xinput_dll = NULL;
+HINSTANCE mg_xinput_dll = NULL;
+HINSTANCE mg_dinput_dll = NULL;
+
 PFN_XInputGetState XInputGetStateSrc = NULL;
 PFN_XInputGetKeystroke XInputGetKeystrokeSrc = NULL;
 PFN_XInputGetCapabilities XInputGetCapabilitiesSrc = NULL;
-
-
+PFN_DirectInput8Create DInput8CreateSrc = NULL;
 
 const GUID MG_IID_IDirectInput8W =
     {0xbf798031,0x483a,0x4da2,{0xaa,0x99,0x5d,0x64,0xed,0x36,0x97,0x00}};
@@ -1336,7 +1335,7 @@ mg_bool mg_supportsXInput(const GUID* guid) {
     unsigned int count = 0;
     mg_size_t i;
 
-    if (xinput_dll == NULL) {
+    if (mg_xinput_dll == NULL) {
         return MG_FALSE;
     }
 
@@ -1401,13 +1400,13 @@ BOOL CALLBACK DirectInputEnumDevicesCallback(LPCDIDEVICEINSTANCE inst, LPVOID us
     gamepad = mg_gamepad_find(gamepads);
     gamepad->src.device = NULL;
 
-    if (FAILED(IDirectInput8_CreateDevice(gamepads->src.dinput, &inst->guidInstance, &gamepad->src.device, NULL))) {
+    if (FAILED(IDirectInput8_CreateDevice((IDirectInput8*)gamepads->src.dinput, &inst->guidInstance, (IDirectInputDevice8**)&gamepad->src.device, NULL))) {
         mg_gamepad_release(gamepads, gamepad);
         return DIENUM_CONTINUE;
     }
 
 
-    if (FAILED(IDirectInputDevice8_SetDataFormat(gamepad->src.device, &mg_dataFormat ))) {
+    if (FAILED(IDirectInputDevice8_SetDataFormat((IDirectInputDevice8*)gamepad->src.device, &mg_dataFormat ))) {
         mg_gamepad_release(gamepads, gamepad);
         return DIENUM_CONTINUE;
     }
@@ -1415,8 +1414,7 @@ BOOL CALLBACK DirectInputEnumDevicesCallback(LPCDIDEVICEINSTANCE inst, LPVOID us
     MG_MEMSET(&caps, 0, sizeof(caps));
     caps.dwSize = sizeof(DIDEVCAPS);
 
-    IDirectInputDevice8_GetCapabilities(gamepad->src.device, &caps);
-    gamepad->src.caps = caps;
+    IDirectInputDevice8_GetCapabilities((IDirectInputDevice8*)gamepad->src.device, &caps);
 
     MG_MEMSET(&dipd, 0, sizeof(dipd));
     dipd.diph.dwSize = sizeof(dipd);
@@ -1424,7 +1422,7 @@ BOOL CALLBACK DirectInputEnumDevicesCallback(LPCDIDEVICEINSTANCE inst, LPVOID us
     dipd.diph.dwHow = DIPH_DEVICE;
     dipd.dwData = DIPROPAXISMODE_ABS;
 
-    if (FAILED(IDirectInputDevice8_SetProperty(gamepad->src.device, DIPROP_AXISMODE, &dipd.diph))) {
+    if (FAILED(IDirectInputDevice8_SetProperty((IDirectInputDevice8*)gamepad->src.device, DIPROP_AXISMODE, &dipd.diph))) {
         mg_gamepad_release(gamepads, gamepad);
         return DIENUM_CONTINUE;
     }
@@ -1455,10 +1453,10 @@ BOOL CALLBACK DirectInputEnumDevicesCallback(LPCDIDEVICEINSTANCE inst, LPVOID us
     DIJOYSTATE state;
     MG_MEMSET(&state, 0, sizeof(state));
 
-    IDirectInputDevice8_Acquire(gamepad->src.device);
-    IDirectInputDevice8_Poll(gamepad->src.device);
+    IDirectInputDevice8_Acquire((IDirectInputDevice8*)gamepad->src.device);
+    IDirectInputDevice8_Poll((IDirectInputDevice8*)gamepad->src.device);
 
-    result = IDirectInputDevice8_GetDeviceState(gamepad->src.device, sizeof(state), &state);
+    result = IDirectInputDevice8_GetDeviceState((IDirectInputDevice8*)gamepad->src.device, sizeof(state), &state);
     if (FAILED(result)) {
         mg_gamepad_release(gamepads, gamepad);
         return DIENUM_CONTINUE;
@@ -1513,48 +1511,50 @@ BOOL CALLBACK DirectInputEnumDevicesCallback(LPCDIDEVICEINSTANCE inst, LPVOID us
 }
 
 void mg_gamepads_init_platform(mg_gamepads* gamepads) {
-    /* init global gamepads->src.data */
-    if (xinput_dll == NULL) {
+	HINSTANCE hInstance = GetModuleHandle(0);
+
+	/* init global gamepads->src.data */
+    if (mg_xinput_dll == NULL) {
         /* load xinput dll and functions (if it's available) */
         static const char* names[] = {"xinput0_4.dll", "xinput9_1_0.dll", "xinput1_2.dll", "xinput1_1.dll"};
 
         uint32_t i;
         for (i = 0; i < sizeof(names) / sizeof(const char*) && (XInputGetStateSrc == NULL || XInputGetKeystrokeSrc != NULL);  i++) {
-            xinput_dll = LoadLibraryA(names[i]);
-            if (xinput_dll) {
-                XInputGetStateSrc = (PFN_XInputGetState)(mg_proc)GetProcAddress(xinput_dll, "XInputGetState");
-                XInputGetKeystrokeSrc = (PFN_XInputGetKeystroke)(mg_proc)GetProcAddress(xinput_dll, "XInputGetKeystroke");
-                XInputGetCapabilitiesSrc =  (PFN_XInputGetCapabilities)(mg_proc)GetProcAddress(xinput_dll, "XInputGetCapabilities");
+            mg_xinput_dll = LoadLibraryA(names[i]);
+            if (mg_xinput_dll) {
+                XInputGetStateSrc = (PFN_XInputGetState)(mg_proc)GetProcAddress(mg_xinput_dll, "XInputGetState");
+                XInputGetKeystrokeSrc = (PFN_XInputGetKeystroke)(mg_proc)GetProcAddress(mg_xinput_dll, "XInputGetKeystroke");
+                XInputGetCapabilitiesSrc =  (PFN_XInputGetCapabilities)(mg_proc)GetProcAddress(mg_xinput_dll, "XInputGetCapabilities");
             }
         }
 
-        if (xinput_dll) {
+        if (mg_xinput_dll) {
             mg_bool b = mg_gamepads_fetch(gamepads, NULL);
             MG_UNUSED(b);
         }
     }
 
-    if (gamepads->src.dinput_dll == NULL) {
-
+    if (mg_dinput_dll == NULL && DInput8CreateSrc == NULL) {
         /* load directinput dll and functions  */
-        gamepads->src.dinput_dll = LoadLibraryA("dinput8.dll");
-        if (gamepads->src.dinput_dll) {
-            HINSTANCE hInstance = GetModuleHandle(0);
-            gamepads->src.DInput8Create = (PFN_DirectInput8Create)(mg_proc)GetProcAddress(gamepads->src.dinput_dll, "DirectInput8Create");
-            if (FAILED(gamepads->src.DInput8Create(hInstance,
-                                              DIRECTINPUT_VERSION,
-                                              &MG_IID_IDirectInput8W,
-                                              (void**) &gamepads->src.dinput,
-                                              NULL)) ||
-                FAILED(IDirectInput8_EnumDevices(gamepads->src.dinput,
-                                                 DI8DEVCLASS_GAMECTRL,
-                                                 DirectInputEnumDevicesCallback,
-                                                 (void*)gamepads,
-                                                 DIEDFL_ALLDEVICES))) {
-                gamepads->src.dinput_dll = NULL;
-            }
-        }
-    }
+        mg_dinput_dll = LoadLibraryA("dinput8.dll");
+        if (mg_dinput_dll)
+            DInput8CreateSrc = (PFN_DirectInput8Create)(mg_proc)GetProcAddress(mg_dinput_dll, "DirectInput8Create");
+	}
+
+	if (DInput8CreateSrc) {
+		if (FAILED(DInput8CreateSrc(hInstance,
+									  DIRECTINPUT_VERSION,
+									  &MG_IID_IDirectInput8W,
+									  (void**) &gamepads->src.dinput,
+									  NULL)) ||
+			FAILED(IDirectInput8_EnumDevices((IDirectInput8*)gamepads->src.dinput,
+								 DI8DEVCLASS_GAMECTRL,
+								 DirectInputEnumDevicesCallback,
+								 (void*)gamepads,
+								 DIEDFL_ALLDEVICES))) {
+			mg_dinput_dll = NULL;
+		}
+	}
 }
 
 #ifndef XINPUT_DEVSUBTYPE_FLIGHT_STICK
@@ -1589,7 +1589,7 @@ static const char* mg_xinput_gamepad_name(const XINPUT_CAPABILITIES xic) {
 
 mg_bool mg_gamepads_update_platform(mg_gamepads* gamepads, mg_events* events) {
     mg_bool out = MG_FALSE;
-    if (xinput_dll) {
+    if (mg_xinput_dll) {
         DWORD dwResult, i;
         for (i = 0; i < XUSER_MAX_COUNT; i++) {
             mg_gamepad* gamepad = mg_xinput_list[i];
@@ -1649,7 +1649,7 @@ mg_bool mg_gamepads_update_platform(mg_gamepads* gamepads, mg_events* events) {
     }
 
     if (gamepads->src.dinput) {
-        IDirectInput8_EnumDevices(gamepads->src.dinput,
+        IDirectInput8_EnumDevices((IDirectInput8*)gamepads->src.dinput,
                                   DI8DEVCLASS_GAMECTRL,
                                   DirectInputEnumDevicesCallback,
                                   (void*)gamepads,
@@ -1660,16 +1660,16 @@ mg_bool mg_gamepads_update_platform(mg_gamepads* gamepads, mg_events* events) {
 }
 
 void mg_gamepads_free_platform(mg_gamepads* gamepads) {
-    if (xinput_dll) {
-        FreeLibrary(xinput_dll);
-        xinput_dll = NULL;
+    if (mg_xinput_dll) {
+        FreeLibrary(mg_xinput_dll);
+        mg_xinput_dll = NULL;
     }
 
-    if (gamepads->src.dinput_dll) {
+    if (mg_dinput_dll) {
         if (gamepads->src.dinput)
-            IDirectInput8_Release(gamepads->src.dinput);
+            IDirectInput8_Release((IDirectInput8*)gamepads->src.dinput);
 
-        FreeLibrary(gamepads->src.dinput_dll);
+        FreeLibrary(mg_dinput_dll);
     }
 }
 
@@ -1744,18 +1744,22 @@ mg_bool mg_gamepad_update_platform(mg_gamepad* gamepad, mg_events* events) {
 
     if (gamepad->src.device) {
         u32 i;
-        DIDEVCAPS caps = gamepad->src.caps;
+		DIDEVCAPS caps;
         DIJOYSTATE state;
         HRESULT result;
         LONG axes_state[6];
 
-        IDirectInputDevice8_Poll(gamepad->src.device);
-        result = IDirectInputDevice8_GetDeviceState(gamepad->src.device, sizeof(state), &state);
-        if (result == DIERR_NOTACQUIRED || result == DIERR_INPUTLOST) {
-            IDirectInputDevice8_Acquire(gamepad->src.device);
-            IDirectInputDevice8_Poll(gamepad->src.device);
+		MG_MEMSET(&caps, 0, sizeof(caps));
+	    caps.dwSize = sizeof(DIDEVCAPS);
 
-            result = IDirectInputDevice8_GetDeviceState(gamepad->src.device, sizeof(state), &state);
+		IDirectInputDevice8_GetCapabilities((IDirectInputDevice8*)gamepad->src.device, &caps);
+        IDirectInputDevice8_Poll((IDirectInputDevice8*)gamepad->src.device);
+        result = IDirectInputDevice8_GetDeviceState((IDirectInputDevice8*)gamepad->src.device, sizeof(state), &state);
+        if (result == DIERR_NOTACQUIRED || result == DIERR_INPUTLOST) {
+            IDirectInputDevice8_Acquire((IDirectInputDevice8*)gamepad->src.device);
+            IDirectInputDevice8_Poll((IDirectInputDevice8*)gamepad->src.device);
+
+            result = IDirectInputDevice8_GetDeviceState((IDirectInputDevice8*)gamepad->src.device, sizeof(state), &state);
         }
 
         if (FAILED(result)) {
@@ -1811,7 +1815,7 @@ mg_bool mg_gamepad_update_platform(mg_gamepad* gamepad, mg_events* events) {
 
 void mg_gamepad_release_platform(mg_gamepad* gamepad) {
     if (gamepad->src.device) {
-        IDirectInputDevice8_Release(gamepad->src.device);
+        IDirectInputDevice8_Release((IDirectInputDevice8*)gamepad->src.device);
     }
 
     if (gamepad->src.xinput_index) {
@@ -1859,7 +1863,7 @@ void mg_osx_input_value_changed_callback(void *context, IOReturn result, void *s
 	CFIndex intValue = IOHIDValueGetIntegerValue(value);
     MG_UNUSED(result); MG_UNUSED(sender);
 
-    if (gamepad->src.device != device)
+    if ((IDirectInputDevice8*)gamepad->src.device != device)
         return;
 
     switch (usagePage) {
@@ -2024,7 +2028,7 @@ void mg_osx_device_removed_callback(void *context, IOReturn result, void *sender
 	}
 
     for (cur = gamepads->list.head; cur; cur = cur->next) {
-        if (cur->src.device == device) {
+        if ((IDirectInputDevice8*)cur->src.device == device) {
 			mg_handle_connection_event(&gamepads->events, MG_FALSE, cur);
 			mg_gamepad_release(gamepads, cur);
             return;
