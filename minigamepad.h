@@ -219,33 +219,69 @@
     typedef u8 mg_bool;
 #endif
 
-#ifndef MG_MAX_GAMEPADS
-    #define MG_MAX_GAMEPADS 4
-#endif
-
 #define MG_BOOL(x) (mg_bool)((x) ? MG_TRUE : MG_FALSE) /* force an value to be 0 or 1 */
 #define MG_TRUE (mg_bool)1
 #define MG_FALSE (mg_bool)0
 
+#ifndef MG_MAX_GAMEPADS
+    #define MG_MAX_GAMEPADS 4
+#endif
+
+#ifndef MG_MAX_EVENTS
+	#define MG_MAX_EVENTS 32
+#endif
+
+/**!
+ * @brief global stucture for the source API data of all the gamepads
+*/
+typedef struct mg_gamepads_src mg_gamepads_src;
+
+/**!
+ * @brief global stucture for the data of all the gamepads
+*/
+typedef struct mg_gamepads mg_gamepads;
+
+/**!
+ * @brief the source API data of the gamepad object
+*/
+typedef struct mg_gamepad_src mg_gamepad_src;
+
+/**!
+ * @brief data stucture for gamepad objects
+*/
+typedef struct mg_gamepad mg_gamepad;
+
+/**!
+ * @brief source gamepad list object
+*/
+typedef struct mg_gamepad_list {
+    mg_gamepad* head; /* head node of the list */
+    mg_gamepad* cur; /* current/tail node of the list */
+    mg_size_t count; /* number of nodes */
+} mg_gamepad_list;
+
+/**!
+ * @brief abstract constants for gamepad buttons
+*/
 typedef MG_ENUM(i8, mg_button) {
     MG_BUTTON_UNKNOWN = -1,
     MG_BUTTON_SOUTH,           /**< Bottom face button (e.g. Xbox A button) */
     MG_BUTTON_EAST,            /**< Right face button (e.g. Xbox B button) */
     MG_BUTTON_WEST,            /**< Left face button (e.g. Xbox X button) */
     MG_BUTTON_NORTH,           /**< Top face button (e.g. Xbox Y button) */
-    MG_BUTTON_BACK,
-    MG_BUTTON_GUIDE,
-    MG_BUTTON_START,
-    MG_BUTTON_LEFT_STICK,
-    MG_BUTTON_RIGHT_STICK,
-    MG_BUTTON_LEFT_SHOULDER,
-    MG_BUTTON_RIGHT_SHOULDER,
-    MG_BUTTON_DPAD_LEFT,
-    MG_BUTTON_DPAD_RIGHT,
-    MG_BUTTON_DPAD_UP,
-    MG_BUTTON_DPAD_DOWN,
-    MG_BUTTON_LEFT_TRIGGER,
-    MG_BUTTON_RIGHT_TRIGGER,
+    MG_BUTTON_BACK,				/**< back (or select) button on the gamepad */
+    MG_BUTTON_GUIDE,			/**< guide button on the controller (e.g. the Xbox button or ps button) */
+    MG_BUTTON_START,			/**< start button on the gamepad */
+    MG_BUTTON_LEFT_STICK,		/**< left stick button (L3) */
+    MG_BUTTON_RIGHT_STICK,		/**< left shoulder button (R4) */
+    MG_BUTTON_LEFT_SHOULDER,	/**< left shoulder button (L1) */
+    MG_BUTTON_RIGHT_SHOULDER,	/**< left shoulder button (R1) */
+    MG_BUTTON_DPAD_LEFT,		/**< dpad left button */
+    MG_BUTTON_DPAD_RIGHT,		/**< dpad right button */
+    MG_BUTTON_DPAD_UP,			/**< dpad up button */
+    MG_BUTTON_DPAD_DOWN,		/**< dpad down button */
+    MG_BUTTON_LEFT_TRIGGER,		/**< left trigger button (L2) */
+    MG_BUTTON_RIGHT_TRIGGER,	/**< right trigger button (R2) */
  /* extras */
     MG_BUTTON_MISC1,           /**< Additional button (e.g. Xbox Series X share button, PS5 microphone button, Nintendo Switch Pro capture button, Amazon Luna microphone button, Google Stadia capture button) */
     MG_BUTTON_RIGHT_PADDLE1,   /**< Upper or primary paddle, under your right hand (e.g. Xbox Elite paddle P1) */
@@ -261,19 +297,22 @@ typedef MG_ENUM(i8, mg_button) {
     MG_BUTTON_COUNT
 };
 
+/**!
+ * @brief abstract constants for gamepad axes
+*/
 typedef MG_ENUM(i8, mg_axis) {
-    MG_AXIS_UNKNOWN = -1,
-    MG_AXIS_LEFT_X,
-    MG_AXIS_LEFT_Y,
-    MG_AXIS_RIGHT_X,
-    MG_AXIS_RIGHT_Y,
-    MG_AXIS_LEFT_TRIGGER,
-    MG_AXIS_RIGHT_TRIGGER,
-    MG_AXIS_HAT_DPAD_LEFT_RIGHT,
+    MG_AXIS_UNKNOWN = -1, /**< */
+    MG_AXIS_LEFT_X, /**< X axis of the left stick */
+    MG_AXIS_LEFT_Y, /**< Y axis of the left stick */
+    MG_AXIS_RIGHT_X, /**< X axis of the right stick */
+    MG_AXIS_RIGHT_Y, /**< Y axis of the left stick */
+    MG_AXIS_LEFT_TRIGGER, /**< Axis of the left triggle (0 - 1) */
+    MG_AXIS_RIGHT_TRIGGER, /**< Axis of the right triggle (0 - 1) */
+    MG_AXIS_HAT_DPAD_LEFT_RIGHT, /**< d-pad left-right hat value  */
     MG_AXIS_HAT_DPAD_LEFT = MG_AXIS_HAT_DPAD_LEFT_RIGHT,
     MG_AXIS_HAT_DPAD_RIGHT = MG_AXIS_HAT_DPAD_LEFT_RIGHT,
-    MG_AXIS_HAT_DPAD_UP_DOWN,
-    MG_AXIS_HAT_DPAD_UP = MG_AXIS_HAT_DPAD_UP_DOWN,
+    MG_AXIS_HAT_DPAD_UP_DOWN, /**<  d-pad up-down hat value */
+    MG_AXIS_HAT_DPAD_UP = MG_AXIS_HAT_DPAD_UP_DOWN, /**< */
     MG_AXIS_HAT_DPAD_DOWN = MG_AXIS_HAT_DPAD_UP_DOWN,
 /* extras */
     MG_AXIS_THROTTLE,
@@ -299,16 +338,216 @@ typedef MG_ENUM(i8, mg_axis) {
     MG_AXIS_COUNT
 };
 
+/**!
+ * @brief the type of event in the queue
+*/
 typedef MG_ENUM(u8, mg_event_type) {
-    MG_EVENT_NONE = 0,
-    MG_EVENT_GAMEPAD_CONNECT,
-    MG_EVENT_GAMEPAD_DISCONNECT,
-    MG_EVENT_BUTTON_PRESS,
-    MG_EVENT_BUTTON_RELEASE,
-    MG_EVENT_AXIS_MOVE
+    MG_EVENT_NONE = 0, /**< no/null event */
+    MG_EVENT_GAMEPAD_CONNECT, /**< a new gamepad connected */
+    MG_EVENT_GAMEPAD_DISCONNECT, /**< a gamepad was disconnected */
+    MG_EVENT_BUTTON_PRESS, /**< gamepad button was pressed */
+    MG_EVENT_BUTTON_RELEASE, /**< gamepad button was released */
+    MG_EVENT_AXIS_MOVE /**< gamepad axis was moved/changed */
 };
 
+/**!
+ * @brief button (press or release) event type
+*/
+typedef struct mg_button_state {
+    mg_bool supported; /* if the button is supported or not by the gamepad */
+    mg_bool current; /* the current state of the button */
+    mg_bool prev; /* the previous state of the button */
+} mg_button_state;
+
+/**!
+ * @brief axis motion event type
+*/
+typedef struct mg_axis_state {
+    mg_bool supported; /* if the axis is supported or not by the gamepad */
+    float value; /* the current value of the axis */
+    float deadzone; /* deadzones of the axis */
+} mg_axis_state;
+
+/**!
+ * @brief event structure for processing event data
+*/
+typedef struct mg_event {
+    mg_event_type type; /* the type of event */
+    mg_button button; /* button value */
+    mg_axis axis; /* axis value */
+    mg_gamepad* gamepad; /* which gamepad */
+} mg_event;
+
+/**!
+ * @brief stucture for all event data for collecting events
+*/
+typedef struct mg_events {
+	mg_event queue[MG_MAX_EVENTS]; /* event queue array for collecting the frame's events */
+	size_t len; /* the number of events in the array */
+} mg_events;
+
+/* callbacks */
+/**!
+ * @brief type for the connection callback function
+*/
+typedef void (*mg_gamepad_connection_func)(mg_gamepad* gamepad, mg_bool connected);
+
+/**!
+ * @brief type for the button state callback function
+*/
+typedef void (*mg_gamepad_button_func)(mg_gamepad* gamepad, mg_button button, mg_bool pressed);
+
+/**!
+ * @brief type for the axis move callback function
+*/
+typedef void (*mg_gamepad_axis_func)(mg_gamepad* gamepad, mg_axis);
+
+/**!
+ * @brief init gamepads, api and internal data
+ * @param pointer to a pre-allocated gamepads object
+*/
+MG_API void mg_gamepads_init(mg_gamepads* gamepads);
+
+/**!
+ * @brief update and fetch information on the gamepads
+ * @param gamepads object that needs to be updated
+ * @param pointer to a event object to fill the event with
+ * @return returns a boolean value if there was an event or not to process
+*/
+MG_API mg_bool mg_gamepads_update(mg_gamepads* gamepads, mg_event* event);
+
+/**!
+ * @brief free internal gamepads data
+ * @param gamepads object
+*/
+MG_API void mg_gamepads_free(mg_gamepads* gamepads);
+
+/**!
+ * @brief look for and fetch new gamepads
+ * @param gamepads object
+ * @param events object for storing any caught events (can be NULL)
+ * @return boolean if there was a connected or disconnected gamepad
+*/
+
+MG_API mg_bool mg_gamepads_fetch(mg_gamepads* gamepad, mg_events* events);
+
+/**!
+ * @brief update a specific gamepad object
+ * @param the gamepad object to update
+ * @param events object for storing caught events (can be NULL)
+ * @return boolean if there was a update
+*/
+
+MG_API mg_bool mg_gamepad_update(mg_gamepad* gamepad, mg_events* events);
+
+/**!
+ * @brief returns if a button of a gamepad was pressed or not
+ * @param gamepad object
+ * @param button to check
+ * @return boolean value button for if the button was pressed
+*/
+
+MG_API mg_bool mg_gamepad_button_is_pressed(mg_gamepad* gamepad, mg_button button);
+
+
+/* add a new mapping */
+/**!
+ * @brief returns if a button of a gamepad was released down or not
+ * @param the gamepad object
+ * @param button to check
+ * @return the boolean value for if the button was released
+*/
+
+MG_API mg_bool mg_gamepad_button_is_released(mg_gamepad* gamepad, mg_button button);
+
+/* add a new mapping */
+/**!
+ * @brief returns if a button of a gamepad is down or not
+ * @param the gamepad object
+ * @param the button to check
+ * @return the boolean state of the button
+*/
+
+MG_API mg_bool mg_gamepad_button_is_down(mg_gamepad* gamepad, mg_button button);
+
+/* add a new mapping */
+/**!
+ * @brief returns the axis value of an axis of a gamepad
+ * @param the source gamepad object
+ * @param the axis to check
+ * @return the current floating point value of the axis
+*/
+
+MG_API float mg_gamepad_axis_value(mg_gamepad* gamepad, mg_axis axis);
+
+/* add a new mapping */
+/**!
+ * @brief set the function object for gamepad connection events
+ * @param the function object to use
+ * @return the original function object in use
+*/
+
+MG_API mg_gamepad_connection_func mg_set_gamepad_connected_callback(mg_gamepad_connection_func func);
+
+/* these are ran by mg_gamepads_update */
+/**!
+ * @brief set the function object for gamepad release events
+ * @param the function object to use
+ * @return the original function object in use
+*/
+MG_API mg_gamepad_button_func mg_set_gamepad_release_callback(mg_gamepad_button_func func);
+
+/**!
+ * @brief set the function object for gamepad axis movement aevents
+ * @param the function object to use
+ * @return the current function object in use
+*/
+MG_API mg_gamepad_axis_func mg_set_gamepad_axis_callback(mg_gamepad_axis_func func);
+
+/**!
+ * @brief set the gamepad disconnected callback function object
+ * @param the function object to use
+ * @return the original value of the disconnected callback
+*/
+
+MG_API mg_gamepad_connection_func mg_set_gamepad_disconnected_callback(mg_gamepad_connection_func func);
+
+/**!
+ * @brief set the gamepad press callbqack function to use
+ * @param the function object to use
+ * @return the original value of the gamepad press callback
+*/
+MG_API mg_gamepad_button_func mg_set_gamepad_press_callback(mg_gamepad_button_func func);
+
+/* add a new mapping */
+/**!
+ * @brief update the mappings the gamepads object uses with a new mapping
+ * @param the new mapping string
+ * @return returns a boolean value based on success
+*/
+MG_API mg_bool mg_update_gamepad_mappings(mg_gamepads* gamepads, const char* string);
+
+/**!
+ * @brief fetch the string name of a button (for testing)
+ * @param the button enum value
+ * @return constant c-string that represents the button's name
+*/
+MG_API const char* mg_button_get_name(mg_button button);
+
+/**!
+ * @brief fetch the string name of a axis (for testing)
+ * @param the axis enum value
+ * @return constant c-string that represents the axis's name
+*/
+MG_API const char* mg_axis_get_name(mg_axis axis);
+
+#endif /* MG_HEADER */
+
+#if (defined(MG_NATIVE) || defined(MG_IMPLEMENTATION)) && !defined(MG_NATIVE_HEADER)
+#define MG_NATIVE_HEADER
+
 #ifdef MG_LINUX
+
 struct mg_input_absinfo {
 	i32 value;
 	i32 minimum;
@@ -318,49 +557,44 @@ struct mg_input_absinfo {
 	i32 resolution;
 };
 
-typedef struct mg_gamepad_src {
+struct mg_gamepad_src {
     int fd;
     u8 keyMap[512];
     u8 absMap[64];
     struct mg_input_absinfo absInfo[64];
     char full_path[256];
-} mg_gamepad_src;
+};
+
 #elif defined(MG_WINDOWS)
-typedef struct mg_gamepad_src {
+
+struct mg_gamepad_src {
     void* device;
     u32 xinput_index;
-} mg_gamepad_src;
+};
+
 #elif defined(MG_MACOS)
-typedef struct mg_gamepad_src {
+
+struct mg_gamepad_src {
 	void* device;
 	void* events;
-} mg_gamepad_src;
+};
+
 #elif defined(MG_WASM)
-typedef struct mg_gamepad_src {
+
+struct mg_gamepad_src {
     int index;
-} mg_gamepad_src;
+};
+
 #endif
-
-typedef struct mg_button_state {
-    mg_bool supported;
-    mg_bool current;
-    mg_bool prev;
-} mg_button_state;
-
-typedef struct MG_AXIS_state {
-    mg_bool supported;
-    float value;
-    float deadzone;
-} MG_AXIS_state;
 
 struct mg_mapping;
 
-typedef struct mg_gamepad {
+struct mg_gamepad {
     char name[128];
     char guid[33];
 
     mg_button_state buttons[MG_BUTTON_COUNT];
-    MG_AXIS_state axes[MG_AXIS_COUNT];
+    mg_axis_state axes[MG_AXIS_COUNT];
 
     mg_bool connected;
     mg_size_t index; /* index in gamepad array */
@@ -369,50 +603,30 @@ typedef struct mg_gamepad {
     struct mg_gamepad* prev;
     struct mg_gamepad* next;
     mg_gamepad_src src;
-} mg_gamepad;
+};
 
 #ifdef MG_LINUX
 #include <linux/input.h>
 #include <linux/input-event-codes.h>
 
-typedef struct mg_gamepads_src {
+struct mg_gamepads_src {
     int inotify, watch;
-} mg_gamepads_src;
+};
 #elif defined(MG_WINDOWS)
-typedef struct mg_gamepads_src {
+struct mg_gamepads_src {
     void* dinput;
-} mg_gamepads_src;
+};
 #elif defined(MG_MACOS)
-typedef struct mg_gamepads_src {
+struct mg_gamepads_src {
     void* hidManager;
-} mg_gamepads_src;
+};
 #elif defined(MG_WASM)
-typedef struct mg_gamepads_src {
+struct mg_gamepads_src {
     int TODO;
-} mg_gamepads_src;
+};
 #endif
 
-typedef struct mg_gamepad_list {
-    mg_gamepad* head;
-    mg_gamepad* cur;
-    mg_size_t count;
-} mg_gamepad_list;
-
-
-typedef struct mg_event {
-    mg_event_type type;
-    mg_button button;
-    mg_axis axis;
-    mg_gamepad* gamepad;
-} mg_event;
-
-#define MG_MAX_EVENTS 32
-typedef struct mg_events {
-	mg_event queue[MG_MAX_EVENTS];
-	size_t len;
-} mg_events;
-
-typedef struct mg_gamepads {
+struct mg_gamepads {
     mg_gamepad gamepads[MG_MAX_GAMEPADS];
 
     mg_gamepad_list list;
@@ -421,41 +635,9 @@ typedef struct mg_gamepads {
 	mg_events events;
 
     mg_gamepads_src src;
-} mg_gamepads;
+};
 
-MG_API void mg_gamepads_init(mg_gamepads* gamepads);
-MG_API mg_bool mg_gamepads_update(mg_gamepads* gamepads, mg_event* event);
-MG_API void mg_gamepads_free(mg_gamepads* gamepads);
-
-/* these are ran by mg_gamepads_update */
-MG_API mg_bool mg_gamepads_fetch(mg_gamepads* gamepad, mg_events* events);
-MG_API mg_bool mg_gamepad_update(mg_gamepad* gamepad, mg_events* events);
-
-MG_API mg_bool mg_gamepad_button_is_pressed(mg_gamepad* gamepad, mg_button button);
-MG_API mg_bool mg_gamepad_button_is_released(mg_gamepad* gamepad, mg_button button);
-MG_API mg_bool mg_gamepad_button_is_held(mg_gamepad* gamepad, mg_button button);
-
-MG_API float mg_gamepad_axis_value(mg_gamepad* gamepad, mg_axis axis);
-
-/* callbacks */
-typedef void (*mg_gamepad_connection_func)(mg_gamepad* gamepad, mg_bool connected);
-MG_API mg_gamepad_connection_func mg_set_gamepad_connected_callback(mg_gamepad_connection_func func);
-MG_API mg_gamepad_connection_func mg_set_gamepad_disconnected_callback(mg_gamepad_connection_func func);
-
-typedef void (*mg_gamepad_button_func)(mg_gamepad* gamepad, mg_button button, mg_bool pressed);
-MG_API mg_gamepad_button_func mg_set_gamepad_press_callback(mg_gamepad_button_func func);
-MG_API mg_gamepad_button_func mg_set_gamepad_release_callback(mg_gamepad_button_func func);
-
-typedef void (*mg_gamepad_axis_func)(mg_gamepad* gamepad, mg_axis);
-MG_API mg_gamepad_axis_func mg_set_gamepad_axis_callback(mg_gamepad_axis_func func);
-
-/* add a new mapping */
-MG_API mg_bool mg_update_gamepad_mappings(mg_gamepads* gamepads, const char* string);
-
-MG_API const char* mg_button_get_name(mg_button button);
-MG_API const char* mg_axis_get_name(mg_axis button);
-
-#endif /* MG_HEADER */
+#endif /* MG_NATIVE */
 
 #ifdef MG_IMPLEMENTATION
 
@@ -498,7 +680,7 @@ mg_bool mg_gamepad_button_is_released(mg_gamepad* gamepad, mg_button button) {
     return gamepad->buttons[button].prev && !gamepad->buttons[button].current;
 }
 
-mg_bool mg_gamepad_button_is_held(mg_gamepad* gamepad, mg_button button) {
+mg_bool mg_gamepad_button_is_down(mg_gamepad* gamepad, mg_button button) {
     return gamepad->buttons[button].prev && gamepad->buttons[button].current;
 }
 
