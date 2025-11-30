@@ -1756,7 +1756,7 @@ void mg_gamepads_init_platform(mg_gamepads* gamepads) {
         }
 
         if (mg_xinput_dll) {
-            mg_bool b = mg_gamepads_fetch(gamepads, NULL);
+            mg_bool b = mg_gamepads_poll_platform(gamepads, NULL);
             MG_UNUSED(b);
         }
     }
