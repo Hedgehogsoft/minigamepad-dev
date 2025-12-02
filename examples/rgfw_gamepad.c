@@ -24,7 +24,7 @@ typedef struct my_rect { i32 x, y, w, h; } my_rect;
 void drawGamepad(RGFW_window* w, mg_gamepad* gamepad);
 
 #define RT_IMPLEMENTATION
-#include "rtime.h"
+#include "deps/rtime.h"
 
 int main(void) {
 	RGFW_window* win = RGFW_createWindow("RGFW Example Window", 0, 0, 800, 450, RGFW_windowCenter | RGFW_windowOpenGL);
