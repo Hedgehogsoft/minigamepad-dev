@@ -1634,7 +1634,7 @@ BOOL CALLBACK DirectInputEnumDevicesCallback(LPCDIDEVICEINSTANCE inst, LPVOID us
 		return DIENUM_CONTINUE;
 	}
 
-    gamepad = mg_gamepad_find(gamepads);
+	gamepad = mg_gamepad_find(gamepads);
     if (gamepad == NULL) return FALSE;
 
 	gamepad->src.device = NULL;
@@ -1945,10 +1945,10 @@ void mg_xinput_fetch_gamepads(mg_gamepads* gamepads, mg_events* events) {
 
 mg_bool mg_gamepads_poll_platform(mg_gamepads* gamepads, mg_events* events) {
     mg_bool out = MG_FALSE;
+    MSG msg;
 
 	MG_UNUSED(gamepads); MG_UNUSED(events);
 
-    MSG msg;
     while (PeekMessageA(&msg, NULL, 0u, 0u, PM_REMOVE)) {
 		TranslateMessage(&msg);
 		DispatchMessageA(&msg);
@@ -2080,28 +2080,45 @@ mg_bool mg_gamepad_update_platform(mg_gamepad* gamepad, mg_events* events) {
 
         memcpy(&axes_state, &state, sizeof(axes_state));
 
-        for (i = 0; i < caps.dwAxes && i < 6; i++) {
-            mg_axis key = mg_get_gamepad_axis(gamepad, (u8)i);
-			float value;
+		for (i = 0; i < 6; i++) {
+			mg_axis key = mg_get_gamepad_axis(gamepad, (u8)i);
             if (key == MG_AXIS_UNKNOWN) {
                 key = mg_get_gamepad_axis_platform(i);
-                if (key == MG_AXIS_UNKNOWN) continue;
+				if (key == MG_AXIS_UNKNOWN) continue;
             }
 
-			value = (((float)axes_state[i] + 0.5f) / 32767.5f) - 1.0f;
+			/* NOTE: this doesn't work with triggers because triggers are combined into one input
+			 * TODO: fix this (or just use xinput)
+			 * */
+			float value = (((float)axes_state[i] + 0.5f) / 32767.5f) - 1.0f;
 			mg_handle_axis_event(events, key, value, gamepad);
         }
 
         if (caps.dwPOVs) {
             DWORD pov = state.rgdwPOV[0];
 
-            if (pov != 0xFFFF) {
-                float angle_rad = ((float)pov / 100.0f) * (3.14159265f / 180.0f);
-				mg_handle_axis_event(events, MG_AXIS_HAT_DPAD_LEFT_RIGHT, (float)-cos((float)angle_rad), gamepad);
-				mg_handle_axis_event(events, MG_AXIS_HAT_DPAD_UP_DOWN, (float)-cos((float)angle_rad), gamepad);
-            } else {
-				mg_handle_axis_event(events, MG_AXIS_HAT_DPAD_LEFT_RIGHT, (float)0.0f, gamepad);
-				mg_handle_axis_event(events, MG_AXIS_HAT_DPAD_UP_DOWN, (float)0.0f, gamepad);
+			if (pov != 0xFFFF) {
+				float angle = pov / (45 * DI_DEGREES);
+				int x = 0, y = 0;
+
+				switch ((u32)angle) {
+					case 0: /* up */       x = 0;  y = -1; break;
+					case 1: /* up-right */ x = 1;  y = -1; break;
+					case 2: /* right */    x = 1;  y = 0;  break;
+					case 3: /* down-right */ x = 1; y = 1; break;
+					case 4: /* down */     x = 0;  y = 1;  break;
+					case 5: /* down-left */ x = -1; y = 1; break;
+					case 6: /* left */     x = -1; y = 0;  break;
+					case 7: /* up-left */  x = -1; y = -1; break;
+				}
+
+				mg_handle_button_event(events, MG_BUTTON_DPAD_LEFT, x < 0, gamepad);
+				mg_handle_button_event(events, MG_BUTTON_DPAD_RIGHT, x > 0, gamepad);
+				mg_handle_button_event(events, MG_BUTTON_DPAD_UP, y < 0, gamepad);
+				mg_handle_button_event(events, MG_BUTTON_DPAD_DOWN, y > 0, gamepad);
+			} else {
+				//mg_handle_axis_event(events, MG_AXIS_HAT_DPAD_LEFT_RIGHT, (float)0.0f, gamepad);
+				//mg_handle_axis_event(events, MG_AXIS_HAT_DPAD_UP_DOWN, (float)0.0f, gamepad);
             }
         }
     }
@@ -2130,7 +2147,8 @@ mg_button mg_get_gamepad_button_platform(u32 button) {
 mg_axis mg_get_gamepad_axis_platform(u32 axis) {
     /* TODO */
     switch (axis) {
-        case 2: return MG_AXIS_RIGHT_TRIGGER;
+        case 2: return MG_AXIS_LEFT_TRIGGER;
+        case 5: return MG_AXIS_RIGHT_TRIGGER;
         default: break;
     }
 
